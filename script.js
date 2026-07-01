@@ -185,7 +185,7 @@ const DEFAULT_PERMISSIONS = {
     Amish: ['designsSection', 'challansSection'],
     Office: ['designsSection', 'challansSection', 'packSection', 'salesReturnSection', 'analysisSection'],
     Packing: ['packSection', 'designsSection'],
-    Bholo: ['designsSection']
+    Bholo: ['designsSection', 'packSection', 'challansSection']
 };
 
 function handleUserClick(user) {
@@ -513,7 +513,7 @@ function openAddDesignModal() {
     document.querySelector('.modal-title').textContent = 'Add New Design';
 
     // Reset all fields
-    ['dName', 'dPrice', 'dDesc', 'dTags', 'dHSN', 'dSize', 'dMinStock', 'dMinOrder', 'dSample'].forEach(id => {
+    ['dName', 'dPrice', 'dLessPrice', 'dDesc', 'dTags', 'dHSN', 'dSize', 'dMinStock', 'dMinOrder', 'dSample'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -549,6 +549,7 @@ function openEditDesignModal(id) {
     };
     setVal('dName', d.name);
     setVal('dPrice', d.price);
+    setVal('dLessPrice', d.lessPrice);
     setVal('dDesc', d.desc);
     setVal('dTags', d.tags);
     setVal('dHSN', d.hsn);
@@ -854,6 +855,7 @@ async function saveDesign() {
             updatedAt: Date.now(),
             name,
             price: document.getElementById('dPrice').value.trim() || '–',
+            lessPrice: document.getElementById('dLessPrice').value.trim() || '–',
             desc: document.getElementById('dDesc').value.trim() || '–',
             categories: [...categories],
             tags: document.getElementById('dTags').value.trim() || '–',
@@ -978,6 +980,7 @@ function renderDesignsTable() {
       <div class="design-card-img">
         ${imgHTML}
         ${priceHTML}
+        ${(d.lessPrice && d.lessPrice !== '–') ? `<div class="design-less-badge">Less- ₹${d.lessPrice}</div>` : ''}
         <div class="design-card-edit-overlay">
           <i class="fa fa-pencil-alt"></i> Edit
         </div>
@@ -1070,6 +1073,7 @@ function getDesignStock(designIdOrName, size = null, color = null) {
     // Stock IN: sum all pack quantities and returns for this design+size+color
     let stockIn = 0;
     packs.forEach(p => {
+        if (p.deleted) return;
         if (p.items) {
             p.items.forEach(item => {
                 const match = (designId && item.designId == designId) || (designName && item.name === designName);
@@ -1084,6 +1088,7 @@ function getDesignStock(designIdOrName, size = null, color = null) {
 
     // Add Sales Returns back to stock
     returns.forEach(sr => {
+        if (sr.deleted) return;
         if (sr.items) {
             sr.items.forEach(item => {
                 const match = (designId && item.designId == designId) || (designName && item.designName === designName);
@@ -1099,6 +1104,7 @@ function getDesignStock(designIdOrName, size = null, color = null) {
     // Stock OUT: sum all challan quantities for this design+size+color
     let stockOut = 0;
     challans.forEach(c => {
+        if (c.deleted) return;
         if (c.items) {
             c.items.forEach(item => {
                 const match = (designId && item.designId == designId) || (designName && item.designName === designName);
@@ -1133,6 +1139,7 @@ function getDesignSizeWiseStock(designIdOrName) {
     const sizeStock = {};
 
     packs.forEach(p => {
+        if (p.deleted) return;
         (p.items || []).forEach(item => {
             const match = (designId && item.designId == designId) || (designName && item.name === designName);
             if (match) {
@@ -1143,6 +1150,7 @@ function getDesignSizeWiseStock(designIdOrName) {
     });
 
     returns.forEach(sr => {
+        if (sr.deleted) return;
         (sr.items || []).forEach(item => {
             const match = (designId && item.designId == designId) || (designName && item.designName === designName);
             if (match) {
@@ -1153,6 +1161,7 @@ function getDesignSizeWiseStock(designIdOrName) {
     });
 
     challans.forEach(c => {
+        if (c.deleted) return;
         (c.items || []).forEach(item => {
             const match = (designId && item.designId == designId) || (designName && item.designName === designName);
             if (match) {
@@ -3195,6 +3204,11 @@ function changeAnalysisTab(tab) {
     let packsData = JSON.parse(localStorage.getItem('vastra_packs') || '[]');
     let srData = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]');
     
+    // Filter out deleted items at the source
+    challansData = challansData.filter(c => !c.deleted);
+    packsData = packsData.filter(p => !p.deleted);
+    srData = srData.filter(sr => !sr.deleted);
+
     // Date Filtering
     const startVal = document.getElementById('analysisStart')?.value;
     const endVal = document.getElementById('analysisEnd')?.value;
@@ -4458,9 +4472,9 @@ function exportLiveStockExcel() {
             const end = parseFilterDate(endDate, true);
 
             // This is a simplified movement calculation
-            const allPacks = JSON.parse(localStorage.getItem('vastra_packs') || '[]');
-            const allChallans = JSON.parse(localStorage.getItem('vastra_challans') || '[]');
-            const allReturns = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]');
+            const allPacks = JSON.parse(localStorage.getItem('vastra_packs') || '[]').filter(p => !p.deleted);
+            const allChallans = JSON.parse(localStorage.getItem('vastra_challans') || '[]').filter(c => !c.deleted);
+            const allReturns = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]').filter(sr => !sr.deleted);
 
             // Current Stock (Today)
             const currentStock = getDesignStock(d.name).available;
@@ -4563,7 +4577,7 @@ function parseFilterDate(str, isEnd = false) {
 }
 
 function exportChallansExcel() {
-    let list = JSON.parse(localStorage.getItem('vastra_challans') || '[]');
+    let list = JSON.parse(localStorage.getItem('vastra_challans') || '[]').filter(c => !c.deleted);
     const startDate = document.getElementById('challanExportStart').value;
     const endDate = document.getElementById('challanExportEnd').value;
 
@@ -4618,7 +4632,7 @@ function exportChallansExcel() {
 }
 
 function exportPackDesignsExcel() {
-    let list = JSON.parse(localStorage.getItem('vastra_packs') || '[]');
+    let list = JSON.parse(localStorage.getItem('vastra_packs') || '[]').filter(p => !p.deleted);
     const startDate = document.getElementById('packExportStart').value;
     const endDate = document.getElementById('packExportEnd').value;
 
@@ -4667,7 +4681,7 @@ function exportPackDesignsExcel() {
 }
 
 function exportSalesReturnsExcel() {
-    let list = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]');
+    let list = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]').filter(sr => !sr.deleted);
     const startDate = document.getElementById('srExportStart').value;
     const endDate = document.getElementById('srExportEnd').value;
 
@@ -4770,9 +4784,9 @@ function changeLSTab(tabName, el) {
     if (!currentLSDesign) return;
 
     // Gather records
-    const packs = JSON.parse(localStorage.getItem('vastra_packs') || '[]');
-    const challans = JSON.parse(localStorage.getItem('vastra_challans') || '[]');
-    const returns = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]');
+    const packs = JSON.parse(localStorage.getItem('vastra_packs') || '[]').filter(p => !p.deleted);
+    const challans = JSON.parse(localStorage.getItem('vastra_challans') || '[]').filter(c => !c.deleted);
+    const returns = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]').filter(sr => !sr.deleted);
 
     let records = [];
 
@@ -4975,7 +4989,7 @@ function generateTotalSellReport() {
     const endDate = new Date(endStr);
     endDate.setHours(0, 0, 0, 0);
 
-    const challanData = JSON.parse(localStorage.getItem('vastra_challans') || '[]');
+    const challanData = JSON.parse(localStorage.getItem('vastra_challans') || '[]').filter(c => !c.deleted);
     const reportData = {}; // keyed by "DesignName|Size"
 
     challanData.forEach(c => {
@@ -5074,7 +5088,7 @@ function renderLowStockAlert() {
     resultsArea.innerHTML = '<div style="text-align:center;padding:50px;color:#888;"><i class="fa fa-spinner fa-spin fa-2x"></i><br/><br/>Analyzing 15-day sales patterns...</div>';
 
     setTimeout(() => {
-        const challans = JSON.parse(localStorage.getItem('vastra_challans') || '[]');
+        const challans = JSON.parse(localStorage.getItem('vastra_challans') || '[]').filter(c => !c.deleted);
 
         console.log("Total Challans:", challans.length);
         console.log("Total Designs:", designs.length);
@@ -5114,8 +5128,7 @@ function renderLowStockAlert() {
             console.log(`Checking ${d.name}: Stock = ${currentStock}, Predicted Demand = ${predictedNext15Days} `);
 
             // If current stock is less than predicted demand for next 15 days
-            // OR if it's the test item, force it for visibility
-            if (currentStock < predictedNext15Days || d.name === "TEST-LOW-STOCK-ITEM") {
+            if (currentStock < predictedNext15Days) {
                 lowStockList.push({
                     name: d.name,
                     size: (d.size && d.size !== '–') ? d.size : '',
@@ -5200,7 +5213,7 @@ function exportTotalSellReportExcel() {
     const endDate = new Date(endStr);
     endDate.setHours(23, 59, 59, 999);
 
-    const challanData = JSON.parse(localStorage.getItem('vastra_challans') || '[]');
+    const challanData = JSON.parse(localStorage.getItem('vastra_challans') || '[]').filter(c => !c.deleted);
     const reportData = {};
 
     challanData.forEach(c => {
@@ -5248,9 +5261,9 @@ function exportDesignLedgerExcel() {
     const endStr = document.getElementById('lsDetailExportEnd').value;
 
     // Get all events for the current design
-    const packs = JSON.parse(localStorage.getItem('vastra_packs') || '[]');
-    const challans = JSON.parse(localStorage.getItem('vastra_challans') || '[]');
-    const returns = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]');
+    const packs = JSON.parse(localStorage.getItem('vastra_packs') || '[]').filter(p => !p.deleted);
+    const challans = JSON.parse(localStorage.getItem('vastra_challans') || '[]').filter(c => !c.deleted);
+    const returns = JSON.parse(localStorage.getItem('vastra_salesReturns') || '[]').filter(sr => !sr.deleted);
 
     let events = [];
     packs.forEach(p => {
